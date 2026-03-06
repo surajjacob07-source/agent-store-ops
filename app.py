@@ -115,13 +115,21 @@ try:
                 with cols[1]:
                     submitted = st.form_submit_button("Send")
 
-            # Process AI generation
+            # Process AI generation with SMART Context Restored
             if submitted and prompt:
                 st.session_state.messages.append({"role": "user", "content": prompt})
                 with st.spinner("Scanning your portfolio data..."):
-                    failing_agents = view_df[view_df['Status'] != 'Published'].head(10)
-                    context_str = failing_agents[['Agent_ID', 'Name', 'Status', 'Rejection_Reason']].to_csv(index=False)
-                    rag_prompt = f"Portfolio Summary Context:\n{context_str}\n\nUser Question: {prompt}"
+                    
+                    # Smart Context Retrieval Logic
+                    mentioned_agents = view_df[view_df['Name'].apply(lambda x: x.lower() in prompt.lower()) | view_df['Agent_ID'].apply(lambda x: x.lower() in prompt.lower())]
+                    
+                    if not mentioned_agents.empty:
+                        context_str = mentioned_agents[['Agent_ID', 'Name', 'Status', 'Rejection_Reason', 'Action_Latency']].to_csv(index=False)
+                        rag_prompt = f"Context Data for requested agents:\n{context_str}\n\nUser Question: {prompt}"
+                    else:
+                        failing_agents = view_df[view_df['Status'] != 'Published'].head(10)
+                        context_str = failing_agents[['Agent_ID', 'Name', 'Status', 'Rejection_Reason']].to_csv(index=False)
+                        rag_prompt = f"Portfolio Summary Context (Top flagged agents):\n{context_str}\n\nUser Question: {prompt}"
                     
                     response = client.models.generate_content(model="gemini-2.0-flash", contents=rag_prompt)
                     st.session_state.messages.append({"role": "assistant", "content": response.text})
