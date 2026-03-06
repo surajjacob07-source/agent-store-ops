@@ -107,7 +107,6 @@ try:
             if "messages" not in st.session_state:
                 st.session_state.messages = [{"role": "assistant", "content": "Authentication successful. I am connected to your portfolio data. How can I help?"}]
 
-            # Input form (Compatible with 1.28.0)
             with st.form("chat_form", clear_on_submit=True):
                 cols = st.columns([8, 1])
                 with cols[0]:
@@ -115,12 +114,9 @@ try:
                 with cols[1]:
                     submitted = st.form_submit_button("Send")
 
-            # Process AI generation with SMART Context Restored
             if submitted and prompt:
                 st.session_state.messages.append({"role": "user", "content": prompt})
                 with st.spinner("Scanning your portfolio data..."):
-                    
-                    # Smart Context Retrieval Logic
                     mentioned_agents = view_df[view_df['Name'].apply(lambda x: x.lower() in prompt.lower()) | view_df['Agent_ID'].apply(lambda x: x.lower() in prompt.lower())]
                     
                     if not mentioned_agents.empty:
@@ -131,15 +127,55 @@ try:
                         context_str = failing_agents[['Agent_ID', 'Name', 'Status', 'Rejection_Reason']].to_csv(index=False)
                         rag_prompt = f"Portfolio Summary Context (Top flagged agents):\n{context_str}\n\nUser Question: {prompt}"
                     
-                    response = client.models.generate_content(model="gemini-2.0-flash", contents=rag_prompt)
-                    st.session_state.messages.append({"role": "assistant", "content": response.text})
+                    try:
+                        response = client.models.generate_content(model="gemini-2.0-flash", contents=rag_prompt)
+                        st.session_state.messages.append({"role": "assistant", "content": response.text})
+                    except Exception as e:
+                        if "429" in str(e):
+                            st.session_state.messages.append({"role": "assistant", "content": "⚠️ **API Speed Limit Reached:** Google's Free Tier limits requests. Please wait 60 seconds and ask again!"})
+                        else:
+                            st.error(f"API Error: {e}")
 
-            # Render chat history
             for message in st.session_state.messages:
                 with st.chat_message(message["role"]):
                     st.markdown(message["content"])
         else:
             st.error("Missing Gemini API Key. Please add 'gemini_key' to your Streamlit Secrets.")
+
+    # --- RESTORED: Agent Inspector & Timeline ---
+    st.divider()
+    st.subheader("⏳ Agent Timeline & Diagnostics Inspector")
+    search_query = st.text_input("Enter exact Agent ID (e.g., AGNT-00005) or Name to trace its lifecycle:")
+
+    if search_query:
+        agent_data = view_df[(view_df["Name"].str.contains(search_query, case=False)) | (view_df["Agent_ID"].str.contains(search_query, case=False))]
+        
+        if not agent_data.empty:
+            a = agent_data.iloc[0]
+            st.success(f"Diagnostics securely loaded for: **{a['Name']}** ({a['Agent_ID']})")
+            
+            # Timeline Math
+            pub_date = a['Publish_Date']
+            time_to_pub = a['Time_to_Publish']
+            sub_date = pub_date - timedelta(days=time_to_pub)
+            rev_date = pub_date - timedelta(days=time_to_pub/2)
+            
+            st.markdown("##### 📅 Computed Lifecycle Timeline")
+            t1, t2, t3 = st.columns(3)
+            t1.metric("1. Developer Submitted", sub_date.strftime("%b %d, %Y"))
+            t2.metric("2. Security Review", rev_date.strftime("%b %d, %Y"))
+            t3.metric(f"3. Final Status: {a['Status']}", pub_date.strftime("%b %d, %Y"))
+            
+            st.markdown("##### 🛡️ Automated Security Diagnostics")
+            p1, p2, p3 = st.columns(3)
+            p1.metric("Model Bias Check", f"{a['Bias_Score']:.1f}/100")
+            p2.metric("Code Malware Scan", f"{a['Malware_Score']:.1f}/100")
+            p3.metric("AI Inclusivity Rating", f"{a['Inclusivity_Score']:.1f}/100")
+            
+            if a['Status'] != 'Published':
+                st.error(f"⚠️ Flagged Reason: {a['Rejection_Reason']}")
+        else:
+            st.warning("Agent not found in your current portfolio view.")
 
 except Exception as e:
     st.error("🚨 Application Crashed! Here is the exact error:")
