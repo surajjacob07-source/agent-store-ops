@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 from datetime import datetime, timedelta
-from google import genai
+from openai import OpenAI
 
 # --- 1. Page Config & Professional CSS ---
 st.set_page_config(page_title="Store Ops", layout="wide", initial_sidebar_state="expanded")
@@ -98,11 +98,11 @@ with tab4:
     st.markdown("##### Top Performing Agents by Installs")
     st.dataframe(view_df.nlargest(15, 'Installs')[['Name', 'Vendor', 'Status', 'Installs']], use_container_width=True)
 
-# --- TAB 5: Unstoppable Copilot ---
+# --- TAB 5: OpenAI RAG Copilot ---
 with tab5:
-    st.subheader("🤖 Developer Support Copilot (Hybrid RAG)")
+    st.subheader("🤖 Developer Support Copilot (OpenAI Powered)")
     if "messages" not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": "I am connected to your portfolio. How can I help?"}]
+        st.session_state.messages = [{"role": "assistant", "content": "I am connected to your portfolio via OpenAI. How can I help?"}]
 
     with st.form("chat_form", clear_on_submit=True):
         f_cols = st.columns([8, 1])
@@ -112,20 +112,26 @@ with tab5:
             match = view_df[view_df['Agent_ID'].str.contains(prompt.upper()) | view_df['Name'].str.contains(prompt, case=False)].head(1)
             
             try:
-                client = genai.Client(api_key=st.secrets["gemini_key"])
-                resp = client.models.generate_content(model="gemini-2.0-flash", contents=f"Data: {match.to_csv()}\n\nUser: {prompt}")
-                answer = resp.text
-            except:
-                if not match.empty:
-                    m = match.iloc[0]
-                    answer = f"**[Local RAG Mode]** Found **{m['Name']}** ({m['Agent_ID']}). Status: **{m['Status']}**. Rejection: **{m['Rejection_Reason']}**. Latency: **{m['Action_Latency']:.1f}ms**."
-                else: answer = "I couldn't find that agent. Please try again in 60s."
+                client = OpenAI(api_key=st.secrets["openai_key"])
+                ctx = match.to_csv(index=False) if not match.empty else "No specific agent found in current context. Please answer generally based on your knowledge."
+                
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": f"You are a helpful Microsoft Store Ops Copilot. Use this context data to answer the user: {ctx}"},
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+                answer = response.choices[0].message.content
+            except Exception as e:
+                answer = f"⚠️ Setup Required: Please ensure your OpenAI API key is added to Streamlit Secrets. Error: {e}"
+            
             st.session_state.messages.append({"role": "assistant", "content": answer})
 
     for m in st.session_state.messages:
         with st.chat_message(m["role"]): st.markdown(m["content"])
 
-# --- 5. Inspector Section (RESTORED) ---
+# --- 5. Inspector Section ---
 st.divider()
 st.subheader("🔍 Agent Lifecycle & Security Inspector")
 search = st.text_input("Enter Agent ID to Inspect (e.g., AGNT-00007):")
