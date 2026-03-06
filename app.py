@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 from datetime import datetime, timedelta
-import google.generativeai as genai
+from google import genai
 
 st.set_page_config(page_title="Store Ops", layout="wide", initial_sidebar_state="expanded")
 
@@ -72,17 +72,15 @@ with tab1:
     st.metric("Avg Time to Publish", f"{view_df['Time_to_Publish'].mean():.1f} Days")
     daily_vol = view_df.groupby(view_df['Publish_Date'].dt.date).size().reset_index(name='Volume')
     fig = px.area(daily_vol, x="Publish_Date", y="Volume", template="plotly_dark", color_discrete_sequence=['#2870EA'])
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
-# --- RAG Copilot Logic ---
 with tab5:
     st.subheader("🤖 Developer Support Copilot")
     if "gemini_key" in st.secrets:
-        genai.configure(api_key=st.secrets["gemini_key"])
-        if "chat_session" not in st.session_state:
-            model = genai.GenerativeModel('gemini-2.5-flash', system_instruction="Analyze agent data for rejections.")
-            st.session_state.chat_session = model.start_chat(history=[])
-            st.session_state.messages = [{"role": "assistant", "content": "Connected to Secrets. How can I help?"}]
+        client = genai.Client(api_key=st.secrets["gemini_key"])
+        
+        if "messages" not in st.session_state:
+            st.session_state.messages = [{"role": "assistant", "content": "Connected to Secrets via Google GenAI. How can I help?"}]
         
         for msg in st.session_state.messages:
             with st.chat_message(msg["role"]): st.markdown(msg["content"])
@@ -90,10 +88,14 @@ with tab5:
         if prompt := st.chat_input("Ask about your agents..."):
             st.chat_message("user").markdown(prompt)
             st.session_state.messages.append({"role": "user", "content": prompt})
+            
             failing = view_df[view_df['Status'] != 'Published'].head(5).to_csv(index=False)
-            response = st.session_state.chat_session.send_message(f"Context:\n{failing}\n\nQuestion: {prompt}")
-            with st.chat_message("assistant"): st.markdown(response.text)
-            st.session_state.messages.append({"role": "assistant", "content": response.text})
+            full_prompt = f"Context: Analyze these failing agents: {failing}. Question: {prompt}"
+            
+            with st.spinner("Analyzing..."):
+                response = client.models.generate_content(model="gemini-2.0-flash", contents=full_prompt)
+                with st.chat_message("assistant"): st.markdown(response.text)
+                st.session_state.messages.append({"role": "assistant", "content": response.text})
     else:
         st.error("Missing 'gemini_key' in Streamlit Secrets.")
 
