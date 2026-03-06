@@ -83,21 +83,21 @@ try:
         c3.metric("Pass Rate", f"{view_df['Pass_Rate'].mean():.1f}%")
         daily_vol = view_df.groupby(view_df['Publish_Date'].dt.date).size().reset_index(name='Volume')
         fig_area = px.area(daily_vol, x="Publish_Date", y="Volume", title="Publishing Trend", template="plotly_dark", color_discrete_sequence=['#2870EA'])
-        st.plotly_chart(fig_area, use_container_width=True)
+        st.plotly_chart(fig_area, width='stretch')
 
     with tab2:
         rejections = view_df[view_df['Rejection_Reason'] != 'None']['Rejection_Reason'].value_counts().reset_index()
         if not rejections.empty:
             rejections.columns = ['Reason', 'Count']
             fig_bar = px.bar(rejections, x='Count', y='Reason', orientation='h', title="Top Rejection Reasons", template="plotly_dark", color_discrete_sequence=['#E362F8'])
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_bar, width='stretch')
 
     with tab3:
         fig_box = px.box(view_df, x="Vendor" if current_role=="Admin (Global View)" else "Status", y="Action_Latency", template="plotly_dark")
-        st.plotly_chart(fig_box, use_container_width=True)
+        st.plotly_chart(fig_box, width='stretch')
 
     with tab4:
-        st.dataframe(view_df.nlargest(10, 'Installs')[['Name', 'Status', 'Installs']], use_container_width=True)
+        st.dataframe(view_df.nlargest(10, 'Installs')[['Name', 'Status', 'Installs']], width='stretch')
 
     with tab5:
         st.subheader("🤖 Developer Support Copilot (RAG Enabled)")
@@ -128,5 +128,5 @@ try:
             st.error("Missing Gemini API Key. Please add 'gemini_key' to your Streamlit Secrets.")
 
 except Exception as e:
-    st.error("🚨 Application Crashed! Here is the exact error causing the white screen:")
+    st.error("🚨 Application Crashed! Here is the exact error:")
     st.code(traceback.format_exc())
