@@ -107,23 +107,29 @@ try:
             if "messages" not in st.session_state:
                 st.session_state.messages = [{"role": "assistant", "content": "Authentication successful. I am connected to your portfolio data. How can I help?"}]
 
-            for message in st.session_state.messages:
-                with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
+            # Input form (Compatible with 1.28.0)
+            with st.form("chat_form", clear_on_submit=True):
+                cols = st.columns([8, 1])
+                with cols[0]:
+                    prompt = st.text_input("Message", label_visibility="collapsed", placeholder="E.g., Which of my agents are currently failing and why?")
+                with cols[1]:
+                    submitted = st.form_submit_button("Send")
 
-            if prompt := st.chat_input("E.g., Which of my agents are currently failing and why?"):
-                st.chat_message("user").markdown(prompt)
+            # Process AI generation
+            if submitted and prompt:
                 st.session_state.messages.append({"role": "user", "content": prompt})
-
                 with st.spinner("Scanning your portfolio data..."):
                     failing_agents = view_df[view_df['Status'] != 'Published'].head(10)
                     context_str = failing_agents[['Agent_ID', 'Name', 'Status', 'Rejection_Reason']].to_csv(index=False)
                     rag_prompt = f"Portfolio Summary Context:\n{context_str}\n\nUser Question: {prompt}"
                     
                     response = client.models.generate_content(model="gemini-2.0-flash", contents=rag_prompt)
-                    with st.chat_message("assistant"):
-                        st.markdown(response.text)
                     st.session_state.messages.append({"role": "assistant", "content": response.text})
+
+            # Render chat history
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
         else:
             st.error("Missing Gemini API Key. Please add 'gemini_key' to your Streamlit Secrets.")
 
