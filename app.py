@@ -68,40 +68,47 @@ st.markdown(f'<div class="sub-header">Access: {current_role}</div>', unsafe_allo
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["Velocity", "Quality", "Dev Exp", "Marketplace", "💬 Support Copilot"])
 
+plotly_template = "plotly_dark"
+
 with tab1:
     st.metric("Avg Time to Publish", f"{view_df['Time_to_Publish'].mean():.1f} Days")
     daily_vol = view_df.groupby(view_df['Publish_Date'].dt.date).size().reset_index(name='Volume')
-    fig = px.area(daily_vol, x="Publish_Date", y="Volume", template="plotly_dark", color_discrete_sequence=['#2870EA'])
-    st.plotly_chart(fig, use_container_width=True)
+    fig = px.area(daily_vol, x="Publish_Date", y="Volume", template=plotly_template, color_discrete_sequence=['#2870EA'])
+    st.plotly_chart(fig, width='stretch')
 
 with tab5:
     st.subheader("🤖 Developer Support Copilot")
     if "gemini_key" in st.secrets:
+        # Use the latest GenAI Client logic
         client = genai.Client(api_key=st.secrets["gemini_key"])
         
         if "messages" not in st.session_state:
-            st.session_state.messages = [{"role": "assistant", "content": "Connected to Secrets via Google GenAI. How can I help?"}]
+            st.session_state.messages = [{"role": "assistant", "content": "RAG System Active. Connected to your portfolio data. How can I help?"}]
         
         for msg in st.session_state.messages:
             with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
-        if prompt := st.chat_input("Ask about your agents..."):
+        if prompt := st.chat_input("E.g., Which agents are flagged for data privacy?"):
             st.chat_message("user").markdown(prompt)
             st.session_state.messages.append({"role": "user", "content": prompt})
             
+            # Simple RAG: Inject top flagged agents into context
             failing = view_df[view_df['Status'] != 'Published'].head(5).to_csv(index=False)
-            full_prompt = f"Context: Analyze these failing agents: {failing}. Question: {prompt}"
+            full_prompt = f"Portfolio Context:\n{failing}\n\nQuestion: {prompt}"
             
-            with st.spinner("Analyzing..."):
-                response = client.models.generate_content(model="gemini-2.0-flash", contents=full_prompt)
-                with st.chat_message("assistant"): st.markdown(response.text)
-                st.session_state.messages.append({"role": "assistant", "content": response.text})
+            with st.spinner("Analyzing data..."):
+                try:
+                    response = client.models.generate_content(model="gemini-2.0-flash", contents=full_prompt)
+                    with st.chat_message("assistant"): st.markdown(response.text)
+                    st.session_state.messages.append({"role": "assistant", "content": response.text})
+                except Exception as e:
+                    st.error(f"AI Error: {str(e)}")
     else:
-        st.error("Missing 'gemini_key' in Streamlit Secrets.")
+        st.error("Missing 'gemini_key' in Secrets.")
 
 st.divider()
 st.subheader("🔍 Inspector")
-search = st.text_input("Search Agent:")
+search = st.text_input("Search Agent Name:")
 if search:
     res = view_df[view_df["Name"].str.contains(search, case=False)]
     if not res.empty: st.json(res.iloc[0].to_dict())
